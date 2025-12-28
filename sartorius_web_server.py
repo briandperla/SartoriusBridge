@@ -1,0 +1,631 @@
+#!/usr/bin/env python3
+"""
+Sartorius PMA Evolution WebSocket Server
+
+This creates a local WebSocket server that bridges the scale to web browsers.
+Chrome (or any browser) can connect to ws://localhost:8765 to receive weight data.
+
+USAGE:
+    python3 sartorius_web_server.py
+
+Then open http://localhost:8080 in Chrome to see the scale interface.
+
+Press Ctrl+C to stop the server.
+"""
+
+import asyncio
+import json
+import threading
+import time
+import http.server
+import socketserver
+import os
+import ctypes
+
+# Fix libusb path for macOS (Homebrew installs)
+# This must be done BEFORE importing usb.core
+def find_and_load_libusb():
+    """Find and preload libusb library for pyusb"""
+    # Common Homebrew paths
+    libusb_paths = [
+        "/opt/homebrew/lib/libusb-1.0.dylib",  # Apple Silicon
+        "/opt/homebrew/lib/libusb-1.0.0.dylib",
+        "/usr/local/lib/libusb-1.0.dylib",      # Intel Mac
+        "/usr/local/lib/libusb-1.0.0.dylib",
+    ]
+    for path in libusb_paths:
+        if os.path.exists(path):
+            try:
+                # Preload the library so pyusb can find it
+                ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
+                return path
+            except OSError:
+                continue
+    return None
+
+# Preload libusb before importing usb modules
+_libusb_path = find_and_load_libusb()
+
+import usb.core
+import usb.util
+import usb.backend.libusb1 as libusb1
+
+# Create backend with explicit library path if needed
+_backend = None
+if _libusb_path:
+    try:
+        _backend = libusb1.get_backend(find_library=lambda x: _libusb_path)
+    except OSError:
+        pass
+
+import websockets
+try:
+    from websockets.asyncio.server import serve
+except ImportError:
+    from websockets.server import serve  # Fallback for older versions
+
+# Configuration
+WEBSOCKET_PORT = 8765
+HTTP_PORT = 8080
+VID = 0x24BC
+PID = 0x2010
+
+# Global state
+scale_connected = False
+current_weight = None
+clients = set()
+_libusb_warning_shown = False
+
+
+class SartoriusScale:
+    def __init__(self):
+        self.dev = None
+        self.ep_in = None
+        self.ep_out = None
+        self.buffer = b''
+        self.connected = False
+
+    def connect(self):
+        global _libusb_warning_shown
+        # Try with explicit backend first (for macOS app bundles), then fallback to default
+        try:
+            if _backend:
+                self.dev = usb.core.find(idVendor=VID, idProduct=PID, backend=_backend)
+            else:
+                self.dev = usb.core.find(idVendor=VID, idProduct=PID)
+        except usb.core.NoBackendError:
+            # libusb not available - common in macOS app bundles (show warning only once)
+            if not _libusb_warning_shown:
+                print("Warning: libusb not available. Scale functionality disabled.")
+                print("To enable scale, run from Terminal: python3 ~/sartorius_web_server.py")
+                _libusb_warning_shown = True
+            self.dev = None
+        except usb.core.USBError as e:
+            if not _libusb_warning_shown:
+                print(f"USB error: {e}")
+            self.dev = None
+
+        if not self.dev:
+            return False
+
+        try:
+            # Configure FTDI: 9600 8N1, no flow control
+            self.dev.ctrl_transfer(0x40, 0x00, 0, 0, None)
+            self.dev.ctrl_transfer(0x40, 0x03, 0x4138, 0, None)
+            self.dev.ctrl_transfer(0x40, 0x04, 0x0008, 0, None)
+            self.dev.ctrl_transfer(0x40, 0x02, 0, 0, None)
+            self.dev.ctrl_transfer(0x40, 0x01, 0x0303, 0, None)
+            self.dev.ctrl_transfer(0x40, 0x09, 16, 0, None)
+
+            self.dev.set_configuration()
+            cfg = self.dev.get_active_configuration()
+            intf = cfg[(0, 0)]
+
+            self.ep_in = usb.util.find_descriptor(
+                intf,
+                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+            )
+            self.ep_out = usb.util.find_descriptor(
+                intf,
+                custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+            )
+
+            usb.util.claim_interface(self.dev, 0)
+            self.connected = True
+            return True
+        except Exception as e:
+            print(f"Connection error: {e}")
+            return False
+
+    def request_weight(self):
+        if self.connected:
+            try:
+                self.dev.write(self.ep_out.bEndpointAddress, b'\x1bP\r\n', timeout=1000)
+            except usb.core.USBError:
+                pass
+
+    def tare(self):
+        if self.connected:
+            try:
+                self.dev.write(self.ep_out.bEndpointAddress, b'\x1bT\r\n', timeout=1000)
+            except usb.core.USBError:
+                pass
+
+    def zero(self):
+        """Zero/Reset the scale - try multiple commands."""
+        if self.connected:
+            try:
+                # Try different zero commands that Sartorius scales might use
+                self.dev.write(self.ep_out.bEndpointAddress, b'\x1bZ\r\n', timeout=1000)  # ESC+Z
+                time.sleep(0.1)
+                self.dev.write(self.ep_out.bEndpointAddress, b'\x1b0\r\n', timeout=1000)  # ESC+0
+                time.sleep(0.1)
+                # Some scales use tare when empty as zero
+                self.dev.write(self.ep_out.bEndpointAddress, b'\x1bT\r\n', timeout=1000)  # ESC+T (tare)
+            except usb.core.USBError:
+                pass
+
+    def read_data(self):
+        if not self.connected:
+            return None
+
+        try:
+            raw = bytes(self.dev.read(self.ep_in.bEndpointAddress, 64, timeout=100))
+            if len(raw) > 2:
+                self.buffer += raw[2:]
+
+                if b'\r\n' in self.buffer:
+                    line, self.buffer = self.buffer.split(b'\r\n', 1)
+                    text = line.decode('ascii', errors='replace').strip()
+                    if text:
+                        return self._parse_weight(text)
+        except usb.core.USBError:
+            pass
+        except Exception as e:
+            self.connected = False
+            print(f"Read error: {e}")
+
+        return None
+
+    def _parse_weight(self, text):
+        parts = text.split()
+        weight = None
+        unit = 'g'
+
+        if parts:
+            # Find numeric value and unit
+            for i, p in enumerate(parts):
+                try:
+                    weight = float(p.replace('+', '').replace(' ', ''))
+                    if i + 1 < len(parts):
+                        unit = parts[i + 1]
+                    break
+                except ValueError:
+                    continue
+
+        return {
+            'raw': text,
+            'weight': weight,
+            'unit': unit,
+            'timestamp': time.time()
+        }
+
+    def disconnect(self):
+        try:
+            usb.util.release_interface(self.dev, 0)
+        except (usb.core.USBError, AttributeError):
+            pass
+        self.connected = False
+
+
+# Global scale instance
+scale = SartoriusScale()
+
+
+async def broadcast(message):
+    """Send message to all connected WebSocket clients."""
+    if clients:
+        data = json.dumps(message)
+        await asyncio.gather(*[client.send(data) for client in clients])
+
+
+async def handle_client(websocket):
+    """Handle a WebSocket client connection."""
+    clients.add(websocket)
+    print(f"Client connected. Total clients: {len(clients)}")
+
+    # Send current state
+    await websocket.send(json.dumps({
+        'type': 'status',
+        'connected': scale.connected,
+        'weight': current_weight
+    }))
+
+    try:
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                cmd = data.get('command')
+
+                if cmd == 'tare':
+                    scale.tare()
+                    await websocket.send(json.dumps({'type': 'ack', 'command': 'tare'}))
+                elif cmd == 'zero':
+                    scale.zero()
+                    await websocket.send(json.dumps({'type': 'ack', 'command': 'zero'}))
+                elif cmd == 'read':
+                    scale.request_weight()
+                    await websocket.send(json.dumps({'type': 'ack', 'command': 'read'}))
+            except json.JSONDecodeError:
+                pass
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        clients.discard(websocket)
+        print(f"Client disconnected. Total clients: {len(clients)}")
+
+
+async def scale_reader():
+    """Background task to read from scale and broadcast updates."""
+    global current_weight, scale_connected
+
+    last_request_time = 0
+    REQUEST_INTERVAL = 0.3  # Request weight every 300ms for real-time updates
+
+    while True:
+        if not scale.connected:
+            if scale.connect():
+                scale_connected = True
+                print("Scale connected!")
+                await broadcast({'type': 'status', 'connected': True})
+                scale.request_weight()
+            else:
+                if scale_connected:
+                    scale_connected = False
+                    await broadcast({'type': 'status', 'connected': False})
+                await asyncio.sleep(2)
+                continue
+
+        # Continuously request weight for real-time updates
+        current_time = time.time()
+        if current_time - last_request_time >= REQUEST_INTERVAL:
+            scale.request_weight()
+            last_request_time = current_time
+
+        # Read weight data
+        result = scale.read_data()
+        if result:
+            current_weight = result
+            await broadcast({
+                'type': 'weight',
+                'data': result
+            })
+
+        await asyncio.sleep(0.02)
+
+
+# HTML page for the web interface
+HTML_PAGE = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sartorius PMA Evolution Scale</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+        .status.connected { background: rgba(76, 175, 80, 0.3); }
+        .status.disconnected { background: rgba(244, 67, 54, 0.3); }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .status.connected .status-dot { background: #4CAF50; }
+        .status.disconnected .status-dot { background: #f44336; }
+        .weight-display {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px 60px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+        .weight-value {
+            font-size: 5rem;
+            font-weight: 300;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        .weight-unit {
+            font-size: 2rem;
+            opacity: 0.7;
+            margin-left: 10px;
+        }
+        .weight-raw {
+            font-size: 0.9rem;
+            opacity: 0.5;
+            margin-top: 15px;
+            font-family: monospace;
+        }
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        button {
+            padding: 12px 30px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            font-weight: 500;
+        }
+        button:hover { transform: scale(1.05); }
+        button:active { transform: scale(0.98); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-tare { background: #2196F3; color: white; }
+        .btn-save { background: #4CAF50; color: white; }
+        .btn-clear {
+            background: transparent;
+            color: rgba(255,255,255,0.5);
+            border: 1px solid rgba(255,255,255,0.2);
+            margin-top: 10px;
+            padding: 8px 20px;
+            font-size: 0.85rem;
+        }
+        .btn-clear:hover { background: rgba(255,255,255,0.1); }
+        .history-empty {
+            opacity: 0.4;
+            font-style: italic;
+            padding: 15px;
+            text-align: center;
+        }
+        .history {
+            margin-top: 40px;
+            text-align: left;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .history h3 {
+            font-size: 0.9rem;
+            opacity: 0.6;
+            margin-bottom: 10px;
+        }
+        .history-list {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .history-item {
+            padding: 8px 12px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .history-item:last-child { border-bottom: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sartorius PMA Evolution</h1>
+        <div id="status" class="status disconnected">
+            <span class="status-dot"></span>
+            <span id="status-text">Connecting...</span>
+        </div>
+
+        <div class="weight-display">
+            <span id="weight-value" class="weight-value">---</span>
+            <span id="weight-unit" class="weight-unit">g</span>
+            <div id="weight-raw" class="weight-raw"></div>
+        </div>
+
+        <div class="buttons">
+            <button class="btn-tare" onclick="sendCommand('tare')">Tare</button>
+            <button class="btn-save" onclick="saveReading()">Save Reading</button>
+        </div>
+        <div style="margin-top: 15px; font-size: 0.8rem; opacity: 0.6;">
+            ● Live updating
+        </div>
+
+        <div class="history">
+            <h3>Saved Readings</h3>
+            <div id="history-list" class="history-list">
+                <div class="history-empty">Click "Save Reading" to capture weights</div>
+            </div>
+            <button class="btn-clear" onclick="clearReadings()">Clear All</button>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let savedReadings = [];
+        let currentWeight = null;
+
+        function connect() {
+            ws = new WebSocket('ws://localhost:8765');
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'status') {
+                    updateStatus(data.connected);
+                    if (data.weight) {
+                        updateWeight(data.weight);
+                    }
+                } else if (data.type === 'weight') {
+                    updateWeight(data.data);
+                    currentWeight = data.data;
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected, reconnecting...');
+                updateStatus(false);
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function updateStatus(connected) {
+            const el = document.getElementById('status');
+            const text = document.getElementById('status-text');
+
+            if (connected) {
+                el.className = 'status connected';
+                text.textContent = 'Scale Connected';
+            } else {
+                el.className = 'status disconnected';
+                text.textContent = 'Scale Disconnected';
+            }
+        }
+
+        function updateWeight(data) {
+            const valueEl = document.getElementById('weight-value');
+            const unitEl = document.getElementById('weight-unit');
+            const rawEl = document.getElementById('weight-raw');
+
+            if (data.weight !== null) {
+                valueEl.textContent = data.weight.toFixed(1);
+            } else {
+                valueEl.textContent = '---';
+            }
+
+            unitEl.textContent = data.unit || 'g';
+            rawEl.textContent = data.raw || '';
+        }
+
+        function saveReading() {
+            if (!currentWeight || currentWeight.weight === null) {
+                return;
+            }
+
+            const time = new Date().toLocaleTimeString();
+            savedReadings.unshift({
+                time,
+                weight: currentWeight.weight,
+                unit: currentWeight.unit,
+                raw: currentWeight.raw
+            });
+
+            renderSavedReadings();
+        }
+
+        function clearReadings() {
+            savedReadings = [];
+            renderSavedReadings();
+        }
+
+        function renderSavedReadings() {
+            const list = document.getElementById('history-list');
+
+            if (savedReadings.length === 0) {
+                list.innerHTML = '<div class="history-empty">Click "Save Reading" to capture weights</div>';
+            } else {
+                list.innerHTML = savedReadings.map((r, i) =>
+                    `<div class="history-item">#${savedReadings.length - i}  ${r.time}: <strong>${r.weight} ${r.unit}</strong></div>`
+                ).join('');
+            }
+        }
+
+        function sendCommand(cmd) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ command: cmd }));
+            }
+        }
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>
+'''
+
+
+class SimpleHTTPHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/' or self.path == '/index.html':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(HTML_PAGE.encode())
+        else:
+            self.send_error(404)
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP logs
+
+
+def run_http_server():
+    with socketserver.TCPServer(("", HTTP_PORT), SimpleHTTPHandler) as httpd:
+        httpd.serve_forever()
+
+
+async def main():
+    print("=" * 55)
+    print("Sartorius PMA Evolution - Web Server")
+    print("=" * 55)
+    print()
+    print(f"  Web Interface:  http://localhost:{HTTP_PORT}")
+    print(f"  WebSocket:      ws://localhost:{WEBSOCKET_PORT}")
+    print()
+    print("Open Chrome and go to the Web Interface URL above.")
+    print("Press Ctrl+C to stop the server.")
+    print()
+    print("-" * 55)
+
+    # Start HTTP server in background thread
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
+    print(f"HTTP server started on port {HTTP_PORT}")
+
+    # Start WebSocket server
+    async with serve(handle_client, "localhost", WEBSOCKET_PORT):
+        print(f"WebSocket server started on port {WEBSOCKET_PORT}")
+        print()
+
+        # Run scale reader
+        await scale_reader()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n\nServer stopped.")
