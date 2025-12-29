@@ -1,15 +1,15 @@
 # SartoriusBridge
 
-A macOS menu bar app that bridges Sartorius PMA Evolution precision scales to web browsers via WebSocket.
+A macOS app that bridges Sartorius PMA precision scales to web browsers via WebSocket.
 
 ## Overview
 
-SartoriusBridge enables real-time weight data from Sartorius scales to be captured in web applications. It runs as a lightweight menu bar app on macOS and provides:
+SartoriusBridge enables real-time weight data from Sartorius scales to be captured in web applications. It runs as a lightweight app on macOS and provides:
 
 - **WebSocket server** on port 8765 for real-time weight streaming
 - **HTTP interface** on port 8080 for standalone testing
-- **Menu bar controls** for easy server management
 - **Auto-reconnect** when scale is disconnected/reconnected
+- **Multi-scale support** for PMA Evolution and PMA Power series
 
 ## Requirements
 
@@ -111,9 +111,18 @@ Connect to `ws://localhost:8765` to receive weight data.
 
 ## Compatible Hardware
 
-- **Sartorius PMA Evolution** series
-- USB connection (FTDI FT-X chip)
-- USB VID: 0x24BC, PID: 0x2010
+| Scale | USB VID | USB PID | Chip |
+|-------|---------|---------|------|
+| Sartorius PMA Evolution | 0x24BC | 0x2010 | Sartorius native |
+| Sartorius PMA Power | 0x0403 | 0x6001 | FTDI FT232 |
+
+### Required Scale Settings
+Both scales must be configured with these serial settings:
+- **Baud Rate:** 9600
+- **Data Bits:** 8
+- **Parity:** None
+- **Stop Bits:** 1
+- **Handshake:** None
 
 ## Files
 

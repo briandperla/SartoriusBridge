@@ -67,8 +67,16 @@ except ImportError:
 # Configuration
 WEBSOCKET_PORT = 8765
 HTTP_PORT = 8080
-VID = 0x24BC
-PID = 0x2010
+
+# Supported scale USB identifiers
+# PMA Evolution uses Sartorius VID, PMA Power uses FTDI chip
+SUPPORTED_SCALES = [
+    (0x24BC, 0x2010, "PMA Evolution"),  # Sartorius PMA Evolution (native USB)
+    (0x0403, 0x6001, "PMA Power"),      # FTDI FT232 (PMA Power)
+]
+
+# FTDI VID for detecting FTDI-based scales
+FTDI_VID = 0x0403
 
 # Global state
 scale_connected = False
@@ -84,38 +92,47 @@ class SartoriusScale:
         self.ep_out = None
         self.buffer = b''
         self.connected = False
+        self.scale_name = None
 
     def connect(self):
         global _libusb_warning_shown
-        # Try with explicit backend first (for macOS app bundles), then fallback to default
-        try:
-            if _backend:
-                self.dev = usb.core.find(idVendor=VID, idProduct=PID, backend=_backend)
-            else:
-                self.dev = usb.core.find(idVendor=VID, idProduct=PID)
-        except usb.core.NoBackendError:
-            # libusb not available - common in macOS app bundles (show warning only once)
-            if not _libusb_warning_shown:
-                print("Warning: libusb not available. Scale functionality disabled.")
-                print("To enable scale, run from Terminal: python3 ~/sartorius_web_server.py")
-                _libusb_warning_shown = True
-            self.dev = None
-        except usb.core.USBError as e:
-            if not _libusb_warning_shown:
-                print(f"USB error: {e}")
-            self.dev = None
+        # Try each supported scale VID/PID combination
+        for vid, pid, name in SUPPORTED_SCALES:
+            try:
+                if _backend:
+                    self.dev = usb.core.find(idVendor=vid, idProduct=pid, backend=_backend)
+                else:
+                    self.dev = usb.core.find(idVendor=vid, idProduct=pid)
+                if self.dev:
+                    self.scale_name = name
+                    break  # Found a scale
+            except usb.core.NoBackendError:
+                # libusb not available - common in macOS app bundles (show warning only once)
+                if not _libusb_warning_shown:
+                    print("Warning: libusb not available. Scale functionality disabled.")
+                    print("To enable scale, run from Terminal: python3 ~/sartorius_web_server.py")
+                    _libusb_warning_shown = True
+                self.dev = None
+                break
+            except usb.core.USBError as e:
+                if not _libusb_warning_shown:
+                    print(f"USB error: {e}")
+                self.dev = None
 
         if not self.dev:
             return False
 
         try:
-            # Configure FTDI: 9600 8N1, no flow control
-            self.dev.ctrl_transfer(0x40, 0x00, 0, 0, None)
-            self.dev.ctrl_transfer(0x40, 0x03, 0x4138, 0, None)
-            self.dev.ctrl_transfer(0x40, 0x04, 0x0008, 0, None)
-            self.dev.ctrl_transfer(0x40, 0x02, 0, 0, None)
-            self.dev.ctrl_transfer(0x40, 0x01, 0x0303, 0, None)
-            self.dev.ctrl_transfer(0x40, 0x09, 16, 0, None)
+            # Configure serial settings based on scale type
+            if self.dev.idVendor == FTDI_VID:
+                # FTDI-based scale (PMA Power): Configure 9600 8N1, no flow control
+                self.dev.ctrl_transfer(0x40, 0x00, 0, 0, None)  # Reset
+                self.dev.ctrl_transfer(0x40, 0x03, 0x4138, 0, None)  # Baud rate: 9600
+                self.dev.ctrl_transfer(0x40, 0x04, 0x0008, 0, None)  # Data format: 8N1
+                self.dev.ctrl_transfer(0x40, 0x02, 0, 0, None)  # Flow control: none
+                self.dev.ctrl_transfer(0x40, 0x01, 0x0303, 0, None)  # DTR/RTS high
+                self.dev.ctrl_transfer(0x40, 0x09, 16, 0, None)  # Latency timer
+            # PMA Evolution (native Sartorius USB) doesn't need FTDI configuration
 
             self.dev.set_configuration()
             cfg = self.dev.get_active_configuration()
@@ -183,7 +200,6 @@ class SartoriusScale:
             pass
         except Exception as e:
             self.connected = False
-            print(f"Read error: {e}")
 
         return None
 
