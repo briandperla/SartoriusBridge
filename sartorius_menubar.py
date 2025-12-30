@@ -5,11 +5,11 @@ Runs the scale WebSocket server silently with a menu bar icon
 """
 
 import rumps
-import threading
 import subprocess
 import signal
 import os
 import sys
+import time
 
 class SartoriusBridgeApp(rumps.App):
     def __init__(self):
@@ -18,8 +18,6 @@ class SartoriusBridgeApp(rumps.App):
             icon=None,
             title="⚖️"
         )
-        self.server_process = None
-        self.log_handle = None
         self.menu = [
             rumps.MenuItem("Status: Not Running", callback=None),
             None,  # Separator
@@ -53,14 +51,6 @@ class SartoriusBridgeApp(rumps.App):
 
     @rumps.clicked("Start Server")
     def start_server(self, _):
-        if self.server_process is not None:
-            rumps.notification(
-                title="Sartorius Bridge",
-                subtitle="",
-                message="Server is already running"
-            )
-            return
-
         # Check if port 8765 is already in use (server running from another instance)
         if self.is_port_in_use(8765):
             self.update_status(True)
@@ -71,46 +61,40 @@ class SartoriusBridgeApp(rumps.App):
             )
             return
 
-        # Find the server script
+        # Find the launcher script
         home = os.path.expanduser("~")
-        server_script = os.path.join(home, "sartorius_web_server.py")
+        launcher_script = os.path.join(home, "start_sartorius_server.command")
 
-        if not os.path.exists(server_script):
-            # Try in the app bundle
-            bundle_script = os.path.join(os.path.dirname(__file__), "sartorius_web_server.py")
-            if os.path.exists(bundle_script):
-                server_script = bundle_script
-            else:
-                rumps.notification(
-                    title="Sartorius Bridge",
-                    subtitle="Error",
-                    message="Server script not found!"
-                )
-                return
+        if not os.path.exists(launcher_script):
+            rumps.notification(
+                title="Sartorius Bridge",
+                subtitle="Error",
+                message=f"Launcher not found at {launcher_script}"
+            )
+            return
 
-        # Start the server in background (discard output to prevent pipe buffer blocking)
-        log_file = os.path.join(home, ".sartorius_server.log")
-        self.log_handle = open(log_file, 'w')
+        # Open the .command file - this opens Terminal without needing Automation permission
+        os.system(f'open "{launcher_script}"')
 
-        # Launch via login shell to get proper library paths (bypasses macOS DYLD stripping)
-        shell_cmd = f'export DYLD_LIBRARY_PATH="/opt/homebrew/lib:/usr/local/lib:$DYLD_LIBRARY_PATH"; exec python3 "{server_script}"'
-        self.server_process = subprocess.Popen(
-            ['/bin/bash', '-l', '-c', shell_cmd],
-            stdout=self.log_handle,
-            stderr=self.log_handle,
-            cwd=home
-        )
-
-        self.update_status(True)
-        rumps.notification(
-            title="Sartorius Bridge",
-            subtitle="",
-            message="Server started on port 8765"
-        )
+        # Wait a moment for server to start, then update status
+        time.sleep(2)
+        if self.is_port_in_use(8765):
+            self.update_status(True)
+            rumps.notification(
+                title="Sartorius Bridge",
+                subtitle="",
+                message="Server started in Terminal on port 8765"
+            )
+        else:
+            rumps.notification(
+                title="Sartorius Bridge",
+                subtitle="",
+                message="Server may still be starting..."
+            )
 
     @rumps.clicked("Stop Server")
     def stop_server(self, _):
-        if self.server_process is None:
+        if not self.is_port_in_use(8765):
             rumps.notification(
                 title="Sartorius Bridge",
                 subtitle="",
@@ -118,24 +102,8 @@ class SartoriusBridgeApp(rumps.App):
             )
             return
 
-        self.server_process.terminate()
-        try:
-            self.server_process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            self.server_process.kill()
-            self.server_process.wait()
-        self.server_process = None
-
-        # Close log file handle
-        if self.log_handle:
-            try:
-                self.log_handle.close()
-            except OSError:
-                pass
-            self.log_handle = None
-
-        # Also kill any orphaned processes
-        subprocess.run("lsof -ti:8765 -ti:8080 | xargs kill -9 2>/dev/null", shell=True)
+        # Kill processes on server ports
+        subprocess.run("lsof -ti:8765 -ti:8080 | xargs kill 2>/dev/null", shell=True)
 
         self.update_status(False)
         rumps.notification(
@@ -149,19 +117,8 @@ class SartoriusBridgeApp(rumps.App):
         subprocess.run(["open", "http://localhost:3000"])
 
     def cleanup(self):
-        if self.server_process:
-            self.server_process.terminate()
-            try:
-                self.server_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.server_process.kill()
-        if self.log_handle:
-            try:
-                self.log_handle.close()
-            except OSError:
-                pass
         # Kill any remaining processes on these ports
-        subprocess.run("lsof -ti:8765 -ti:8080 | xargs kill -9 2>/dev/null", shell=True)
+        subprocess.run("lsof -ti:8765 -ti:8080 | xargs kill 2>/dev/null", shell=True)
 
 def main():
     app = SartoriusBridgeApp()
