@@ -12,7 +12,10 @@ pip install pyusb websockets pystray pillow pyinstaller
 
 echo.
 echo Building SartoriusBridge.exe...
-pyinstaller --clean -y SartoriusBridge_windows.spec
+echo Looking for spec file...
+dir SartoriusBridge_windows.spec
+echo.
+python -m PyInstaller --clean -y "%~dp0SartoriusBridge_windows.spec"
 
 echo.
 if exist "dist\SartoriusBridge.exe" (
