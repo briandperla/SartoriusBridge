@@ -1,7 +1,10 @@
 @echo off
+cd /d "%~dp0"
 echo =======================================================
 echo   SartoriusBridge Windows Build Script
 echo =======================================================
+echo.
+echo Working directory: %cd%
 echo.
 
 echo Installing dependencies...
