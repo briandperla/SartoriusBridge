@@ -123,16 +123,17 @@ class SartoriusScale:
             return False
 
         try:
-            # Configure serial settings based on scale type
-            if self.dev.idVendor == FTDI_VID:
-                # FTDI-based scale (PMA Power): Configure 9600 8N1, no flow control
+            # Configure serial settings - both scale types use FTDI-style protocol
+            try:
                 self.dev.ctrl_transfer(0x40, 0x00, 0, 0, None)  # Reset
                 self.dev.ctrl_transfer(0x40, 0x03, 0x4138, 0, None)  # Baud rate: 9600
                 self.dev.ctrl_transfer(0x40, 0x04, 0x0008, 0, None)  # Data format: 8N1
                 self.dev.ctrl_transfer(0x40, 0x02, 0, 0, None)  # Flow control: none
                 self.dev.ctrl_transfer(0x40, 0x01, 0x0303, 0, None)  # DTR/RTS high
                 self.dev.ctrl_transfer(0x40, 0x09, 16, 0, None)  # Latency timer
-            # PMA Evolution (native Sartorius USB) doesn't need FTDI configuration
+                print(f"Configured serial settings for {self.scale_name}")
+            except usb.core.USBError as e:
+                print(f"Note: Serial config not supported ({e})")
 
             self.dev.set_configuration()
             cfg = self.dev.get_active_configuration()
