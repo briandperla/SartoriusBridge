@@ -23,9 +23,10 @@ Download the latest release from the [Releases](https://github.com/briandperla/S
 
 ### Step 1: Install the Sartorius Driver
 
-1. Download "Driver PMA" from [Sartorius Downloads](https://www.sartorius.com) (search for "Driver PMA")
-2. Install the driver - this creates a Virtual COM Port for your scale
-3. Verify: Open Device Manager and look for the scale under "Ports (COM & LPT)"
+1. Download [Driver PMA](https://www.sartorius.com/download/32264/22/driver-pma-data.zip) (2.2 MB ZIP)
+2. Extract and run `Setup.bat` to install
+3. This creates a Virtual COM Port for your scale
+4. Verify: Open Device Manager and look for the scale under "Ports (COM & LPT)"
 
 ### Step 2: Run SartoriusBridge
 
