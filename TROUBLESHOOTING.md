@@ -54,9 +54,10 @@ This is already included in `sartorius_web_server.py` for ALL scale types.
 The Sartorius driver is not installed, so Windows doesn't recognize the scale as a COM port.
 
 #### Fix
-1. Download and install "Driver PMA" from Sartorius website
-2. After installation, the scale will appear as a COM port in Device Manager
-3. Look under "Ports (COM & LPT)" for something like "USB Serial Port (COM3)"
+1. Download [Driver PMA](https://www.sartorius.com/download/32264/22/driver-pma-data.zip) (2.2 MB ZIP)
+2. Extract and run `Setup.bat` to install
+3. After installation, the scale will appear as a COM port in Device Manager
+4. Look under "Ports (COM & LPT)" for something like "USB Serial Port (COM3)"
 
 ### Issue: Scale connected but no weight values
 

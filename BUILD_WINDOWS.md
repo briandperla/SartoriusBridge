@@ -6,7 +6,8 @@
    - Check "Add Python to PATH" during installation
 
 2. **Install the Sartorius Driver** (for testing)
-   - Download "Driver PMA" from Sartorius website
+   - Download [Driver PMA](https://www.sartorius.com/download/32264/22/driver-pma-data.zip) (2.2 MB ZIP)
+   - Extract and run `Setup.bat` to install
    - This creates a Virtual COM Port for scale communication
    - No additional drivers (like Zadig) are required
 
