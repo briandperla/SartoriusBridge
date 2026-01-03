@@ -8,7 +8,7 @@ echo Working directory: %cd%
 echo.
 
 echo Installing dependencies...
-pip install pyusb websockets pystray pillow pyinstaller
+pip install pyserial websockets pystray pillow pyinstaller
 
 echo.
 echo Building SartoriusBridge.exe...

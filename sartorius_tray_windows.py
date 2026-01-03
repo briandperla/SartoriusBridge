@@ -19,8 +19,8 @@ except ImportError:
     print("Please install: pip install pystray pillow")
     sys.exit(1)
 
-# Import the server module
-from sartorius_web_server import main as run_server, scale, clients
+# Import the Windows server module (uses pyserial instead of pyusb)
+from sartorius_web_server_windows import main as run_server, scale, clients
 import asyncio
 
 

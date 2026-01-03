@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 PyInstaller spec file for SartoriusBridge on Windows
-Creates a system tray app executable
+Creates a system tray app executable using pyserial for COM port communication
 """
 
 block_cipher = None
@@ -11,14 +11,14 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('sartorius_web_server.py', '.'),
+        ('sartorius_web_server_windows.py', '.'),
+        ('sartorius_scale_windows.py', '.'),
     ],
     hiddenimports=[
-        'usb',
-        'usb.core',
-        'usb.util',
-        'usb.backend',
-        'usb.backend.libusb1',
+        'serial',
+        'serial.tools',
+        'serial.tools.list_ports',
+        'serial.tools.list_ports_windows',
         'websockets',
         'websockets.server',
         'websockets.asyncio',
@@ -34,7 +34,13 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'usb',
+        'usb.core',
+        'usb.util',
+        'usb.backend',
+        'usb.backend.libusb1',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
