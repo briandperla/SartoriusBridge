@@ -1,0 +1,87 @@
+name: Build and Upload to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyserial websockets pystray pillow pyinstaller
+
+      - name: Build executable
+        run: |
+          python -m PyInstaller --clean -y SartoriusBridge_windows.spec
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: dist/SartoriusBridge.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install libusb
+        run: brew install libusb
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyusb websockets rumps pyinstaller
+
+      - name: Build app bundle
+        run: |
+          python -m PyInstaller --clean -y SartoriusBridge_mac.spec
+
+      - name: Create DMG
+        run: |
+          # Create a temporary directory for DMG contents
+          mkdir -p dmg_contents
+          cp -r dist/SartoriusBridge.app dmg_contents/
+
+          # Create the Install.command script
+          cat > dmg_contents/Install.command << 'SCRIPT'
+          #!/bin/bash
+          # SartoriusBridge Installer
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          cp -r "$SCRIPT_DIR/SartoriusBridge.app" /Applications/
+          echo "SartoriusBridge installed to /Applications"
+          echo "You can now launch it from Applications."
+          SCRIPT
+          chmod +x dmg_contents/Install.command
+
+          # Create DMG
+          hdiutil create -volname "SartoriusBridge" -srcfolder dmg_contents -ov -format UDZO dist/SartoriusBridge.dmg
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: dist/SartoriusBridge.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
