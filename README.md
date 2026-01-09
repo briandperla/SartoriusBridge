@@ -42,6 +42,12 @@ Download the latest release from the [Releases](https://github.com/briandperla/S
 - Check Device Manager for the COM port
 - Run `test_scale_windows.py` to diagnose
 
+**Using X-Pert Formula Management?**
+- X-Pert holds the COM port open and may stop the scale from streaming data
+- Close X-Pert before using SartoriusBridge
+- Power cycle the scale (turn off, then on) after closing X-Pert
+- The two applications cannot use the scale simultaneously
+
 ---
 
 ## macOS Installation

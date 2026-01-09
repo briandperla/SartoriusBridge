@@ -6,14 +6,6 @@ This creates a local WebSocket server that bridges the scale to web browsers.
 Chrome (or any browser) can connect to ws://localhost:8765 to receive weight data.
 
 Windows version uses pyserial to communicate via the Sartorius Virtual COM Port.
-No libusb or Zadig required - just install the official Sartorius "Driver PMA".
-
-USAGE:
-    python sartorius_web_server_windows.py
-
-Then open http://localhost:8080 in Chrome to see the scale interface.
-
-Press Ctrl+C to stop the server.
 """
 
 import asyncio
@@ -92,16 +84,12 @@ async def scale_reader():
     """Background task to read from scale and broadcast updates."""
     global current_weight, scale_connected
 
-    last_request_time = 0
-    REQUEST_INTERVAL = 0.3  # Request weight every 300ms for real-time updates
-
     while True:
         if not scale.connected:
             if scale.connect():
                 scale_connected = True
                 print("Scale connected!")
                 await broadcast({'type': 'status', 'connected': True})
-                scale.request_weight()
             else:
                 if scale_connected:
                     scale_connected = False
@@ -109,13 +97,7 @@ async def scale_reader():
                 await asyncio.sleep(2)
                 continue
 
-        # Continuously request weight for real-time updates
-        current_time = time.time()
-        if current_time - last_request_time >= REQUEST_INTERVAL:
-            scale.request_weight()
-            last_request_time = current_time
-
-        # Read weight data
+        # Read weight data (scale auto-sends, no need to request)
         result = scale.read_data()
         if result:
             current_weight = result
@@ -215,47 +197,6 @@ HTML_PAGE = '''<!DOCTYPE html>
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-tare { background: #2196F3; color: white; }
         .btn-save { background: #4CAF50; color: white; }
-        .btn-clear {
-            background: transparent;
-            color: rgba(255,255,255,0.5);
-            border: 1px solid rgba(255,255,255,0.2);
-            margin-top: 10px;
-            padding: 8px 20px;
-            font-size: 0.85rem;
-        }
-        .btn-clear:hover { background: rgba(255,255,255,0.1); }
-        .history-empty {
-            opacity: 0.4;
-            font-style: italic;
-            padding: 15px;
-            text-align: center;
-        }
-        .history {
-            margin-top: 40px;
-            text-align: left;
-            max-width: 400px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .history h3 {
-            font-size: 0.9rem;
-            opacity: 0.6;
-            margin-bottom: 10px;
-        }
-        .history-list {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-            padding: 10px;
-            max-height: 150px;
-            overflow-y: auto;
-        }
-        .history-item {
-            padding: 8px 12px;
-            font-family: monospace;
-            font-size: 0.9rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .history-item:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -279,19 +220,10 @@ HTML_PAGE = '''<!DOCTYPE html>
         <div style="margin-top: 15px; font-size: 0.8rem; opacity: 0.6;">
             ● Live updating
         </div>
-
-        <div class="history">
-            <h3>Saved Readings</h3>
-            <div id="history-list" class="history-list">
-                <div class="history-empty">Click "Save Reading" to capture weights</div>
-            </div>
-            <button class="btn-clear" onclick="clearReadings()">Clear All</button>
-        </div>
     </div>
 
     <script>
         let ws;
-        let savedReadings = [];
         let currentWeight = null;
 
         function connect() {
@@ -354,46 +286,19 @@ HTML_PAGE = '''<!DOCTYPE html>
             rawEl.textContent = data.raw || '';
         }
 
-        function saveReading() {
-            if (!currentWeight || currentWeight.weight === null) {
-                return;
-            }
-
-            const time = new Date().toLocaleTimeString();
-            savedReadings.unshift({
-                time,
-                weight: currentWeight.weight,
-                unit: currentWeight.unit,
-                raw: currentWeight.raw
-            });
-
-            renderSavedReadings();
-        }
-
-        function clearReadings() {
-            savedReadings = [];
-            renderSavedReadings();
-        }
-
-        function renderSavedReadings() {
-            const list = document.getElementById('history-list');
-
-            if (savedReadings.length === 0) {
-                list.innerHTML = '<div class="history-empty">Click "Save Reading" to capture weights</div>';
-            } else {
-                list.innerHTML = savedReadings.map((r, i) =>
-                    `<div class="history-item">#${savedReadings.length - i}  ${r.time}: <strong>${r.weight} ${r.unit}</strong></div>`
-                ).join('');
-            }
-        }
-
         function sendCommand(cmd) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ command: cmd }));
             }
         }
 
-        // Start connection
+        function saveReading() {
+            if (currentWeight) {
+                console.log('Saved:', currentWeight);
+                alert('Weight saved: ' + currentWeight.weight + ' ' + currentWeight.unit);
+            }
+        }
+
         connect();
     </script>
 </body>
@@ -428,7 +333,6 @@ async def main():
     print(f"  Web Interface:  http://localhost:{HTTP_PORT}")
     print(f"  WebSocket:      ws://localhost:{WEBSOCKET_PORT}")
     print()
-    print("Open Chrome and go to the Web Interface URL above.")
     print("Press Ctrl+C to stop the server.")
     print()
     print("-" * 55)

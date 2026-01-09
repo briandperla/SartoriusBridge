@@ -2,13 +2,9 @@
 """
 Sartorius Scale Communication Module for Windows
 Uses pyserial to communicate via Virtual COM Port
-
-The Sartorius "Driver PMA" creates a standard COM port on Windows,
-allowing communication without libusb or Zadig.
 """
 
 import time
-
 import serial
 import serial.tools.list_ports
 
@@ -76,9 +72,13 @@ class SartoriusScale:
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
-                timeout=0.1,  # Non-blocking read
+                timeout=0.1,
                 write_timeout=1.0
             )
+            # Set DTR and RTS high (required for scale communication)
+            self.serial_port.dtr = True
+            self.serial_port.rts = True
+
             self.port_name = port_name
             self.scale_name = scale_name
             self.connected = True
@@ -131,7 +131,6 @@ class SartoriusScale:
             if self.serial_port.in_waiting > 0:
                 data = self.serial_port.read(self.serial_port.in_waiting)
                 if data:
-                    # pyserial returns raw data (no FTDI status bytes to strip)
                     self.buffer += data
 
                     if b'\r\n' in self.buffer:
