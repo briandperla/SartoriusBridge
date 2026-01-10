@@ -1,235 +1,157 @@
 # SartoriusBridge
 
-A cross-platform app that bridges Sartorius PMA precision scales to web browsers via WebSocket.
+A lightweight desktop app that connects Sartorius precision scales to [Formulator](https://formulator.focalfinishes.com) and other web applications.
 
-## Overview
+## Features
 
-SartoriusBridge enables real-time weight data from Sartorius scales to be captured in web applications. It runs as a lightweight system tray/menu bar app and provides:
-
-- **WebSocket server** on port 8765 for real-time weight streaming
-- **HTTP interface** on port 8080 for standalone testing
-- **Auto-reconnect** when scale is disconnected/reconnected
-- **Multi-scale support** for PMA Evolution and PMA Power series
-
-## Download
-
-Download the latest release from the [Releases](https://github.com/briandperla/SartoriusBridge/releases) page:
-- **macOS**: `SartoriusBridge.dmg`
-- **Windows**: `SartoriusBridge.exe`
+- Real-time weight streaming via WebSocket (port 8765)
+- System tray/menu bar icon with connection status
+- Auto-reconnect when scale is unplugged/reconnected
+- Works with PMA Evolution and PMA Power series scales
 
 ---
 
-## Windows Installation
+## Windows
 
-### Step 1: Install the Sartorius Driver
+### Prerequisites
 
-1. Download [Driver PMA](https://www.sartorius.com/download/32264/22/driver-pma-data.zip) (2.2 MB ZIP)
-2. Extract and run `Setup.bat` to install
-3. This creates a Virtual COM Port for your scale
-4. Verify: Open Device Manager and look for the scale under "Ports (COM & LPT)"
+Install these before running SartoriusBridge:
 
-### Step 2: Run SartoriusBridge
+| Requirement | Download | Notes |
+|-------------|----------|-------|
+| **Sartorius Driver** | [Driver PMA (ZIP)](https://www.sartorius.com/download/32264/22/driver-pma-data.zip) | Extract and run `Setup.bat` |
+| **Python 3** | [python.org/downloads](https://www.python.org/downloads/) | Check "Add to PATH" during install |
 
-1. Download `SartoriusBridge.exe` from Releases
+### Installation
+
+1. Download **SartoriusBridge.exe** from [Releases](https://github.com/briandperla/SartoriusBridge/releases)
 2. Double-click to run
-3. Look for the scale icon in the system tray (bottom-right)
-4. Right-click for menu options
+3. Look for the scale icon in the system tray (bottom-right corner)
+4. Right-click the icon for menu options
 
-### Windows Troubleshooting
+### Verifying the Driver
+
+After installing the Sartorius driver:
+1. Connect your scale via USB
+2. Open **Device Manager**
+3. Look under **Ports (COM & LPT)** for "Sartorius" or a new COM port
+
+### Troubleshooting
 
 **Scale not detected?**
-- Ensure the Sartorius "Driver PMA" is installed
+- Ensure the Sartorius Driver PMA is installed
 - Check Device Manager for the COM port
-- Run `test_scale_windows.py` to diagnose
+- Restart the app after connecting the scale
 
 **Using X-Pert Formula Management?**
-- X-Pert holds the COM port open and may stop the scale from streaming data
+- X-Pert locks the COM port exclusively
 - Close X-Pert before using SartoriusBridge
-- Power cycle the scale (turn off, then on) after closing X-Pert
-- The two applications cannot use the scale simultaneously
+- Power cycle the scale after closing X-Pert
 
 ---
 
-## macOS Installation
+## macOS
 
-### Prerequisites (Required)
+### Prerequisites
 
-Before running SartoriusBridge, you must install these dependencies:
+Install these before running SartoriusBridge:
 
-**1. Install Homebrew** (if not already installed):
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
+| Requirement | Install Command | Notes |
+|-------------|-----------------|-------|
+| **Homebrew** | `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` | [brew.sh](https://brew.sh) |
+| **libusb** | `brew install libusb` | Required for USB communication |
+| **Python 3** | `brew install python` | Usually pre-installed on newer Macs |
 
-**2. Install libusb** (required for scale communication):
-```bash
-brew install libusb
-```
+### Installation
 
-**3. Install Python** (if not already installed):
-```bash
-brew install python
-```
-
-### Install the App
-
-1. Download `SartoriusBridge.dmg` from [Releases](https://github.com/briandperla/SartoriusBridge/releases)
-2. Open the DMG and drag SartoriusBridge to Applications
+1. Download **SartoriusBridge.dmg** from [Releases](https://github.com/briandperla/SartoriusBridge/releases)
+2. Open the DMG and drag **SartoriusBridge** to Applications
 3. Right-click the app and select **Open** (required first time for Gatekeeper)
-4. You'll see a notification confirming the app is active
-5. The scale icon appears in your menu bar with these colors:
-   - 🟢 **Green** = Scale connected and streaming
-   - 🟡 **Yellow** = Server running, waiting for scale
-   - ⚫ **Gray** = Server stopped
+4. A notification confirms the app is active
+5. The scale icon appears in your menu bar
 
-### Run from Source (Alternative)
+### Troubleshooting
 
-```bash
-# Install dependencies
-brew install libusb
-pip3 install pyusb websockets rumps
+**"libusb not available"**
+- Run `brew install libusb` in Terminal
 
-# Run the menu bar app
-python3 sartorius_menubar.py
-```
+**App won't open (Gatekeeper)**
+- Right-click the app → **Open** → Click **Open** in the dialog
 
-### macOS Troubleshooting
-
-**"libusb not available"**: Run `brew install libusb`
-
-**"Scale not found"**: Ensure libusb is installed and the scale is connected via USB
-
-**Permission denied**: Right-click the app and select **Open** to bypass Gatekeeper
+**Scale not found**
+- Ensure libusb is installed
+- Check that the scale is connected via USB
 
 ---
 
-## Usage
+## Status Icons
 
-### System Tray/Menu Bar
+The tray/menu bar icon indicates connection status:
 
-When running, you'll see a scale icon in your system tray (Windows) or menu bar (macOS):
-
-| Icon | Status |
-|------|--------|
-| 🟢 Green | Scale connected and streaming data |
-| 🟡 Yellow | Server running, waiting for scale |
-| ⚫ Gray | Server stopped |
-
-**Menu Options:**
-- **Start Server** - Starts the WebSocket bridge
-- **Stop Server** - Stops the bridge
-- **Open Test Page** - Opens http://localhost:8080
-- **Open Formulator** - Opens the Formulator app
-- **Quit** - Stops server and exits
-
-### Standalone Server
-
-For testing or headless operation:
-
-```bash
-# macOS
-python3 sartorius_web_server.py
-
-# Windows
-python sartorius_web_server_windows.py
-```
-
-Then open http://localhost:8080 in your browser.
+| Icon | Meaning |
+|------|---------|
+| 🟢 **Green** | Scale connected and streaming |
+| 🟡 **Yellow** | Server running, waiting for scale |
+| ⚫ **Gray** | Server stopped |
 
 ---
 
-## WebSocket API
+## Menu Options
+
+Right-click (Windows) or click (macOS) the icon for these options:
+
+- **Start Server** – Start the WebSocket bridge
+- **Stop Server** – Stop the bridge
+- **Open Formulator** – Launch the Formulator web app
+- **Quit** – Stop server and exit
+
+---
+
+## Supported Scales
+
+| Model | Connection |
+|-------|------------|
+| Sartorius PMA Evolution | USB (native) |
+| Sartorius PMA Power | USB (FTDI) |
+
+**Scale Settings:** 9600 baud, 8N1, no handshake
+
+---
+
+## For Developers
+
+### WebSocket API
 
 Connect to `ws://localhost:8765` to receive weight data.
 
-### Messages from Server
-
-```javascript
-// Connection status
-{ "type": "status", "connected": true/false, "weight": {...} }
-
-// Weight reading
-{ "type": "weight", "data": { "weight": 123.4, "unit": "g", "raw": "..." } }
-
-// Command acknowledgment
-{ "type": "ack", "command": "tare" }
+**Server Messages:**
+```json
+{ "type": "status", "connected": true }
+{ "type": "weight", "data": { "weight": 123.4, "unit": "g" } }
 ```
 
-### Commands to Server
-
-```javascript
-// Tare the scale
+**Client Commands:**
+```json
 { "command": "tare" }
-
-// Zero the scale
-{ "command": "zero" }
-
-// Request weight reading
 { "command": "read" }
 ```
 
----
+### Building from Source
 
-## Compatible Hardware
-
-| Scale | USB VID | USB PID | Connection |
-|-------|---------|---------|------------|
-| Sartorius PMA Evolution | 0x24BC | 0x2010 | USB (Sartorius native) |
-| Sartorius PMA Power | 0x0403 | 0x6001 | USB (FTDI FT232) |
-
-### Required Scale Settings
-
-Both scales should be configured with these serial settings:
-- **Baud Rate:** 9600
-- **Data Bits:** 8
-- **Parity:** None
-- **Stop Bits:** 1
-- **Handshake:** None
-
----
-
-## Files
-
-| File | Platform | Description |
-|------|----------|-------------|
-| `sartorius_menubar.py` | macOS | Menu bar app wrapper |
-| `sartorius_web_server.py` | macOS | WebSocket server (pyusb) |
-| `sartorius_tray_windows.py` | Windows | System tray app wrapper |
-| `sartorius_web_server_windows.py` | Windows | WebSocket server (pyserial) |
-| `sartorius_scale_windows.py` | Windows | Scale communication via COM port |
-| `test_scale.py` | macOS | Diagnostic script |
-| `test_scale_windows.py` | Windows | Diagnostic script |
-
----
-
-## Building from Source
-
-### macOS
-
+**macOS:**
 ```bash
 pip3 install pyinstaller pyusb websockets rumps pyobjc
 pyinstaller --clean -y SartoriusBridge_mac.spec
 ```
 
-The app bundle will be at `dist/SartoriusBridge.app`
-
-### Windows
-
-```cmd
-build_windows.bat
-```
-
-Or manually:
-
+**Windows:**
 ```cmd
 pip install pyserial websockets pystray pillow pyinstaller
 pyinstaller --clean -y SartoriusBridge_windows.spec
 ```
 
-The executable will be at `dist\SartoriusBridge.exe`
-
 ---
 
 ## License
 
-Proprietary - Focal Finishes LLC
+Proprietary – Focal Finishes LLC
