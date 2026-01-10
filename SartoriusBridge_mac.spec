@@ -33,6 +33,9 @@ a = Analysis(
     binaries=binaries,
     datas=[
         ('sartorius_web_server.py', '.'),
+        ('menubar_green.png', '.'),
+        ('menubar_yellow.png', '.'),
+        ('menubar_gray.png', '.'),
     ],
     hiddenimports=[
         'usb',
@@ -93,13 +96,13 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='SartoriusBridge.app',
-    icon=None,
+    icon='icon.icns',
     bundle_identifier='com.focalfinishes.sartoriusbridge',
     info_plist={
         'CFBundleName': 'SartoriusBridge',
         'CFBundleDisplayName': 'Sartorius Bridge',
-        'CFBundleVersion': '1.0.0',
-        'CFBundleShortVersionString': '1.0.0',
+        'CFBundleVersion': '1.2.0',
+        'CFBundleShortVersionString': '1.2.0',
         'LSUIElement': True,  # Hide from dock (menu bar app)
         'NSHighResolutionCapable': True,
     },

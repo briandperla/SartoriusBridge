@@ -13,10 +13,18 @@ import time
 
 class SartoriusBridgeApp(rumps.App):
     def __init__(self):
+        # Get the directory where this script/app is located
+        if getattr(sys, 'frozen', False):
+            # Running as bundled app
+            self.app_dir = sys._MEIPASS
+        else:
+            # Running as script
+            self.app_dir = os.path.dirname(os.path.abspath(__file__))
+
         super(SartoriusBridgeApp, self).__init__(
             "Sartorius Bridge",
-            icon=None,
-            title="⚖️"
+            icon=os.path.join(self.app_dir, "menubar_gray.png"),
+            title=None
         )
         self.menu = [
             rumps.MenuItem("Status: Not Running", callback=None),
@@ -29,19 +37,26 @@ class SartoriusBridgeApp(rumps.App):
         ]
         self.status_item = self.menu["Status: Not Running"]
 
+        # Show startup notification
+        rumps.notification(
+            title="Sartorius Bridge Active",
+            subtitle="",
+            message="Use the menu bar icon to control the scale connection."
+        )
+
         # Auto-start the server
         self.start_server(None)
 
     def update_status(self, running, scale_connected=False):
         if running:
             if scale_connected:
-                self.title = "⚖️✓"
+                self.icon = os.path.join(self.app_dir, "menubar_green.png")
                 self.status_item.title = "Status: Connected"
             else:
-                self.title = "⚖️"
+                self.icon = os.path.join(self.app_dir, "menubar_yellow.png")
                 self.status_item.title = "Status: Running (No Scale)"
         else:
-            self.title = "⚖️✗"
+            self.icon = os.path.join(self.app_dir, "menubar_gray.png")
             self.status_item.title = "Status: Not Running"
 
     def is_port_in_use(self, port):
@@ -114,7 +129,7 @@ class SartoriusBridgeApp(rumps.App):
 
     @rumps.clicked("Open Formulator")
     def open_formulator(self, _):
-        subprocess.run(["open", "http://localhost:3000"])
+        subprocess.run(["open", "https://formulator.focalfinishes.com"])
 
     def cleanup(self):
         # Kill any remaining processes on these ports

@@ -52,17 +52,37 @@ Download the latest release from the [Releases](https://github.com/briandperla/S
 
 ## macOS Installation
 
-### Requirements
-- macOS 10.13 or later
-- Homebrew (for libusb): `brew install libusb`
+### Prerequisites (Required)
 
-### Option 1: Pre-built App
+Before running SartoriusBridge, you must install these dependencies:
 
-1. Download `SartoriusBridge.dmg` from Releases
-2. Open the DMG and drag to Applications
-3. Right-click and select **Open** (required first time for Gatekeeper)
+**1. Install Homebrew** (if not already installed):
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
-### Option 2: Run from Source
+**2. Install libusb** (required for scale communication):
+```bash
+brew install libusb
+```
+
+**3. Install Python** (if not already installed):
+```bash
+brew install python
+```
+
+### Install the App
+
+1. Download `SartoriusBridge.dmg` from [Releases](https://github.com/briandperla/SartoriusBridge/releases)
+2. Open the DMG and drag SartoriusBridge to Applications
+3. Right-click the app and select **Open** (required first time for Gatekeeper)
+4. You'll see a notification confirming the app is active
+5. The scale icon appears in your menu bar with these colors:
+   - 🟢 **Green** = Scale connected and streaming
+   - 🟡 **Yellow** = Server running, waiting for scale
+   - ⚫ **Gray** = Server stopped
+
+### Run from Source (Alternative)
 
 ```bash
 # Install dependencies
@@ -77,6 +97,8 @@ python3 sartorius_menubar.py
 
 **"libusb not available"**: Run `brew install libusb`
 
+**"Scale not found"**: Ensure libusb is installed and the scale is connected via USB
+
 **Permission denied**: Right-click the app and select **Open** to bypass Gatekeeper
 
 ---
@@ -89,9 +111,9 @@ When running, you'll see a scale icon in your system tray (Windows) or menu bar 
 
 | Icon | Status |
 |------|--------|
-| Gray | Server running, waiting for scale |
-| Green | Server running, scale connected |
-| Yellow | Server starting |
+| 🟢 Green | Scale connected and streaming data |
+| 🟡 Yellow | Server running, waiting for scale |
+| ⚫ Gray | Server stopped |
 
 **Menu Options:**
 - **Start Server** - Starts the WebSocket bridge
@@ -185,9 +207,11 @@ Both scales should be configured with these serial settings:
 ### macOS
 
 ```bash
-pip3 install py2app
-python3 setup.py py2app
+pip3 install pyinstaller pyusb websockets rumps pyobjc
+pyinstaller --clean -y SartoriusBridge_mac.spec
 ```
+
+The app bundle will be at `dist/SartoriusBridge.app`
 
 ### Windows
 
