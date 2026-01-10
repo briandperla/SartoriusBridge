@@ -32,6 +32,14 @@ class SartoriusBridgeApp(rumps.App):
         # Auto-start the server
         self.start_server(None)
 
+        # Show startup notification
+        rumps.notification(
+            title="Sartorius Bridge Active",
+            subtitle="",
+            message="Use the menu bar icon (⚖️) to control the scale connection.",
+            sound=False
+        )
+
     def update_status(self, running, scale_connected=False):
         if running:
             if scale_connected:
@@ -61,9 +69,9 @@ class SartoriusBridgeApp(rumps.App):
             )
             return
 
-        # Find the launcher script
-        home = os.path.expanduser("~")
-        launcher_script = os.path.join(home, "start_sartorius_server.command")
+        # Find the launcher script (same directory as this script)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        launcher_script = os.path.join(script_dir, "start_sartorius_server.command")
 
         if not os.path.exists(launcher_script):
             rumps.notification(
@@ -114,7 +122,7 @@ class SartoriusBridgeApp(rumps.App):
 
     @rumps.clicked("Open Formulator")
     def open_formulator(self, _):
-        subprocess.run(["open", "http://localhost:3000"])
+        subprocess.run(["open", "https://formulator.focalfinishes.com"])
 
     def cleanup(self):
         # Kill any remaining processes on these ports

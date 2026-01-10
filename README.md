@@ -52,32 +52,45 @@ Download the latest release from the [Releases](https://github.com/briandperla/S
 
 ## macOS Installation
 
-### Requirements
-- macOS 10.13 or later
-- Homebrew (for libusb): `brew install libusb`
+### Prerequisites
 
-### Option 1: Pre-built App
+Before using SartoriusBridge on macOS, install these dependencies:
 
-1. Download `SartoriusBridge.dmg` from Releases
-2. Open the DMG and drag to Applications
-3. Right-click and select **Open** (required first time for Gatekeeper)
+**1. Install Homebrew** (if not already installed):
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
-### Option 2: Run from Source
+**2. Install libusb** (required for USB scale communication):
+```bash
+brew install libusb
+```
+
+**3. Install Python packages**:
+```bash
+pip3 install pyusb websockets rumps
+```
+
+### Running the App
+
+After installing the prerequisites:
 
 ```bash
-# Install dependencies
-brew install libusb
-pip3 install pyusb websockets rumps
-
-# Run the menu bar app
+# Download the source files from Releases, then run:
 python3 sartorius_menubar.py
 ```
+
+The scale icon (⚖️) will appear in your menu bar. You'll see a notification confirming the app is active.
 
 ### macOS Troubleshooting
 
 **"libusb not available"**: Run `brew install libusb`
 
-**Permission denied**: Right-click the app and select **Open** to bypass Gatekeeper
+**"No module named 'rumps'"**: Run `pip3 install pyusb websockets rumps`
+
+**Scale not detected?**:
+- Ensure the USB cable is connected
+- Run `python3 test_scale.py` to diagnose
 
 ---
 
