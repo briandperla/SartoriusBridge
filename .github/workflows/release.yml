@@ -43,9 +43,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.version }}
-          files: |
-            dist/SartoriusBridge.exe
-            dist/SartoriusBridge-Setup-*.exe
+          files: dist/SartoriusBridge-Setup-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
