@@ -43,23 +43,36 @@ class SartoriusBridgeApp(rumps.App):
         self.menu = [
             rumps.MenuItem("Status: Not Running", callback=None),
             None,  # Separator
-            rumps.MenuItem("Start Server", callback=self.start_server),
-            rumps.MenuItem("Stop Server", callback=self.stop_server),
+            rumps.MenuItem("Start Bridge", callback=self.start_bridge),
+            rumps.MenuItem("Stop Bridge", callback=self.stop_bridge),
+            rumps.MenuItem("Reconnect Scale", callback=self.reconnect_scale),
             None,  # Separator
             rumps.MenuItem("Open Formulator", callback=self.open_formulator),
             None,  # Separator
         ]
         self.status_item = self.menu["Status: Not Running"]
 
+        # Set up auto-recovery notification callback
+        sartorius_core.set_recovery_callback(self.on_auto_recovery)
+
         # Show startup notification
         rumps.notification(
             title="Sartorius Bridge",
             subtitle="",
-            message="Starting scale server..."
+            message="Starting bridge..."
         )
 
         # Auto-start the server
-        self.start_server(None)
+        self.start_bridge(None)
+
+    def on_auto_recovery(self, message):
+        """Callback when auto-recovery succeeds."""
+        rumps.notification(
+            title="Sartorius Bridge",
+            subtitle="Auto-Recovery",
+            message=message
+        )
+        self.update_status()
 
     def update_status(self):
         """Update menu bar icon and status text based on actual server state."""
@@ -71,16 +84,16 @@ class SartoriusBridgeApp(rumps.App):
             self.status_item.title = f"Status: Connected ({len(clients)} clients)"
         else:
             self.icon = os.path.join(self.app_dir, "menubar_yellow.png")
-            self.status_item.title = "Status: Running (No Scale)"
+            self.status_item.title = "Status: Searching for Scale"
 
-    @rumps.clicked("Start Server")
-    def start_server(self, _):
+    @rumps.clicked("Start Bridge")
+    def start_bridge(self, _):
         """Start the WebSocket server in a background thread."""
         if self.server_running:
             rumps.notification(
                 title="Sartorius Bridge",
                 subtitle="",
-                message="Server already running"
+                message="Bridge already running"
             )
             return
 
@@ -109,17 +122,17 @@ class SartoriusBridgeApp(rumps.App):
         rumps.notification(
             title="Sartorius Bridge",
             subtitle="",
-            message="Server started"
+            message="Bridge started"
         )
 
-    @rumps.clicked("Stop Server")
-    def stop_server(self, _):
+    @rumps.clicked("Stop Bridge")
+    def stop_bridge(self, _):
         """Stop the WebSocket server cleanly."""
         if not self.server_running:
             rumps.notification(
                 title="Sartorius Bridge",
                 subtitle="",
-                message="Server is not running"
+                message="Bridge is not running"
             )
             return
 
@@ -144,8 +157,44 @@ class SartoriusBridgeApp(rumps.App):
         rumps.notification(
             title="Sartorius Bridge",
             subtitle="",
-            message="Server stopped"
+            message="Bridge stopped"
         )
+
+    @rumps.clicked("Reconnect Scale")
+    def reconnect_scale(self, _):
+        """Manually trigger USB reset and scale reconnection."""
+        if not self.server_running:
+            rumps.notification(
+                title="Sartorius Bridge",
+                subtitle="",
+                message="Start the bridge first"
+            )
+            return
+
+        rumps.notification(
+            title="Sartorius Bridge",
+            subtitle="",
+            message="Reconnecting scale..."
+        )
+
+        # Run reconnect in background thread to avoid blocking UI
+        def do_reconnect():
+            success = sartorius_core.reconnect_scale()
+            if success:
+                rumps.notification(
+                    title="Sartorius Bridge",
+                    subtitle="",
+                    message="Scale reconnected successfully"
+                )
+            else:
+                rumps.notification(
+                    title="Sartorius Bridge",
+                    subtitle="",
+                    message="Reconnect failed - check USB connection"
+                )
+            self.update_status()
+
+        threading.Thread(target=do_reconnect, daemon=True).start()
 
     @rumps.clicked("Open Formulator")
     def open_formulator(self, _):

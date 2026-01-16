@@ -36,6 +36,14 @@ current_weight = None
 clients = set()
 _shutdown_flag = False  # Signal to stop the server gracefully
 _http_server = None  # Reference to HTTP server for shutdown
+_failed_connect_attempts = 0  # Track consecutive connection failures
+_on_recovery_callback = None  # Callback for UI notification on auto-recovery
+
+
+def set_recovery_callback(callback):
+    """Set callback function to be called when auto-recovery succeeds."""
+    global _on_recovery_callback
+    _on_recovery_callback = callback
 
 
 def request_shutdown():
@@ -54,10 +62,48 @@ def request_shutdown():
 
 def reset_shutdown():
     """Reset shutdown flag for restart."""
-    global _shutdown_flag, scale_connected, current_weight
+    global _shutdown_flag, scale_connected, current_weight, _failed_connect_attempts
     _shutdown_flag = False
     scale_connected = False
     current_weight = None
+    _failed_connect_attempts = 0
+
+
+def reconnect_scale() -> bool:
+    """
+    Manually trigger scale reconnection with USB reset.
+
+    This is called from the UI "Reconnect Scale" menu option.
+    It forces a USB reset and reconnection attempt.
+
+    Returns:
+        bool: True if reconnection succeeded
+    """
+    global scale_connected
+
+    if not scale:
+        return False
+
+    print("Manual reconnect requested...")
+
+    # Disconnect first
+    scale.disconnect()
+    scale_connected = False
+
+    # Try USB reset if available (Mac)
+    if hasattr(scale, 'reset_usb_device'):
+        print("Performing USB reset...")
+        scale.reset_usb_device()
+
+    # Try to connect
+    if scale.connect():
+        scale_connected = True
+        scale.update_last_read()
+        print("Scale reconnected successfully!")
+        return True
+
+    print("Reconnection failed")
+    return False
 
 
 async def broadcast(message):
@@ -125,11 +171,34 @@ async def scale_reader():
 
         # Attempt connection if not connected
         if not scale or not scale.connected:
+            global _failed_connect_attempts
+
             if scale:
                 scale.disconnect()  # Ensure clean state before reconnect
-            if scale and scale.connect():
+
+            connected = False
+            if scale:
+                connected = scale.connect()
+
+            # If normal connect failed and we have USB reset capability, try it
+            if not connected and scale and hasattr(scale, 'reset_usb_device'):
+                _failed_connect_attempts += 1
+
+                # After 2 failed attempts, try USB reset (zombie recovery)
+                if _failed_connect_attempts >= 2:
+                    print(f"Connection failed {_failed_connect_attempts} times, attempting USB reset...")
+                    if scale.reset_usb_device():
+                        print("USB reset successful, trying to connect...")
+                        connected = scale.connect()
+                        if connected and _on_recovery_callback:
+                            # Notify UI of auto-recovery
+                            _on_recovery_callback("Scale connection recovered")
+                    _failed_connect_attempts = 0  # Reset counter after trying USB reset
+
+            if connected:
                 scale_connected = True
                 scale.update_last_read()  # Initialize heartbeat timer
+                _failed_connect_attempts = 0  # Reset on successful connection
                 print("Scale connected!")
                 await broadcast({'type': 'status', 'connected': True})
                 scale.request_weight()

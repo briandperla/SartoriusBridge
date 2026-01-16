@@ -21,6 +21,7 @@ except ImportError:
 
 # Import the Windows server module (uses pyserial, not pyusb)
 from sartorius_web_server_windows import main as run_server, scale, clients
+import sartorius_core
 import asyncio
 
 
@@ -57,11 +58,11 @@ class SartoriusBridgeWindows:
 
     def get_status_text(self):
         if not self.server_running:
-            return "Server: Stopped"
+            return "Status: Not Running"
         elif scale.connected:
-            return f"Scale: Connected ({len(clients)} clients)"
+            return f"Status: Connected ({len(clients)} clients)"
         else:
-            return "Server: Running (No Scale)"
+            return "Status: Searching for Scale"
 
     def update_icon(self):
         if not self.server_running:
@@ -71,7 +72,7 @@ class SartoriusBridgeWindows:
         else:
             self.icon.icon = self.create_icon_image('yellow')
 
-    def start_server(self, icon=None, item=None):
+    def start_bridge(self, icon=None, item=None):
         if self.server_running:
             return
 
@@ -94,15 +95,39 @@ class SartoriusBridgeWindows:
         if self.icon:
             self.update_icon()
 
-    def stop_server(self, icon=None, item=None):
+    def stop_bridge(self, icon=None, item=None):
         if not self.server_running:
             return
+
+        # Signal graceful shutdown
+        sartorius_core.request_shutdown()
 
         self.server_running = False
         if self.loop:
             self.loop.call_soon_threadsafe(self.loop.stop)
+
+        # Wait for thread to finish
+        if self.server_thread and self.server_thread.is_alive():
+            self.server_thread.join(timeout=2.0)
+
+        # Clear references
+        self.loop = None
+        self.server_thread = None
+
         if self.icon:
             self.update_icon()
+
+    def reconnect_scale(self, icon=None, item=None):
+        """Manually trigger scale reconnection."""
+        if not self.server_running:
+            return
+
+        def do_reconnect():
+            success = sartorius_core.reconnect_scale()
+            if self.icon:
+                self.update_icon()
+
+        threading.Thread(target=do_reconnect, daemon=True).start()
 
     def open_test_page(self, icon=None, item=None):
         import webbrowser
@@ -110,11 +135,10 @@ class SartoriusBridgeWindows:
 
     def open_formulator(self, icon=None, item=None):
         # Open in Chrome specifically (better WebSocket support)
-        import subprocess
         subprocess.run(['start', 'chrome', 'https://formulator.focalfinishes.com'], shell=True)
 
     def quit_app(self, icon=None, item=None):
-        self.stop_server()
+        self.stop_bridge()
         if self.icon:
             self.icon.stop()
 
@@ -123,8 +147,9 @@ class SartoriusBridgeWindows:
         menu = pystray.Menu(
             item(lambda text: self.get_status_text(), None, enabled=False),
             pystray.Menu.SEPARATOR,
-            item('Start Server', self.start_server),
-            item('Stop Server', self.stop_server),
+            item('Start Bridge', self.start_bridge),
+            item('Stop Bridge', self.stop_bridge),
+            item('Reconnect Scale', self.reconnect_scale),
             pystray.Menu.SEPARATOR,
             item('Open Test Page', self.open_test_page),
             item('Open Formulator', self.open_formulator),
@@ -141,7 +166,7 @@ class SartoriusBridgeWindows:
         )
 
         # Auto-start server
-        self.start_server()
+        self.start_bridge()
 
         # Run the icon (blocks)
         self.icon.run()

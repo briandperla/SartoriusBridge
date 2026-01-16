@@ -159,6 +159,62 @@ class SartoriusScaleMacOS(SartoriusScaleBase):
         self._connected = False
         self.last_successful_read = 0.0  # Reset timestamp
 
+    def reset_usb_device(self) -> bool:
+        """
+        Perform USB bus reset to recover from zombie state.
+
+        After sleep/wake, the USB device can be in a "zombie" state where
+        it's enumerated but unresponsive. A USB reset forces the device
+        to re-initialize and clears this state.
+
+        Returns:
+            bool: True if reset succeeded and device is responsive
+        """
+        print("Attempting USB device reset...")
+
+        # First disconnect cleanly
+        self.disconnect()
+
+        # Find the device and reset it
+        for vid, pid, name in SUPPORTED_SCALES:
+            try:
+                if _backend:
+                    dev = usb.core.find(idVendor=vid, idProduct=pid, backend=_backend)
+                else:
+                    dev = usb.core.find(idVendor=vid, idProduct=pid)
+
+                if dev:
+                    try:
+                        # Send USB reset
+                        dev.reset()
+                        print(f"USB reset sent to {name}")
+
+                        # Give device time to re-enumerate
+                        time.sleep(1)
+
+                        # Verify device is responsive by checking string descriptor
+                        try:
+                            manufacturer = usb.util.get_string(dev, dev.iManufacturer)
+                            print(f"Device responsive: {manufacturer}")
+                            usb.util.dispose_resources(dev)
+                            return True
+                        except Exception:
+                            print("Device still unresponsive after reset")
+                            usb.util.dispose_resources(dev)
+                            return False
+                    except usb.core.USBError as e:
+                        print(f"USB reset failed: {e}")
+                        try:
+                            usb.util.dispose_resources(dev)
+                        except:
+                            pass
+                        return False
+            except Exception:
+                continue
+
+        print("No USB device found to reset")
+        return False
+
     def request_weight(self) -> None:
         """Send weight request command (ESC+P)."""
         if self._connected:
