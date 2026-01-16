@@ -5,29 +5,32 @@ Uses pyserial to communicate via Virtual COM Port
 """
 
 import time
+from typing import Optional, Dict, Any
+
 import serial
 import serial.tools.list_ports
 
-# Supported scale USB identifiers (for COM port detection)
-SUPPORTED_SCALES = [
-    (0x24BC, 0x2010, "PMA Evolution"),  # Sartorius native USB
-    (0x0403, 0x6001, "PMA Power"),      # FTDI FT232
-]
+from sartorius_scale_base import SartoriusScaleBase, SUPPORTED_SCALES
 
 
-class SartoriusScale:
-    """Sartorius scale communication via COM port (Windows)."""
+class SartoriusScaleWindows(SartoriusScaleBase):
+    """
+    Sartorius scale communication via COM port (Windows).
+
+    Uses pyserial for serial communication through the virtual COM port
+    created by the Sartorius Driver PMA.
+    """
 
     def __init__(self):
+        super().__init__()
         self.serial_port = None
         self.port_name = None
-        self.buffer = b''
-        self.connected = False
-        self.scale_name = None
 
     def find_scale_port(self):
         """
         Auto-detect the scale's COM port.
+
+        Searches available COM ports by VID/PID match or description string.
 
         Returns:
             tuple: (port_name, scale_name) or (None, None) if not found
@@ -53,7 +56,7 @@ class SartoriusScale:
 
         return None, None
 
-    def connect(self):
+    def connect(self) -> bool:
         """
         Connect to the scale via COM port.
 
@@ -81,32 +84,44 @@ class SartoriusScale:
 
             self.port_name = port_name
             self.scale_name = scale_name
-            self.connected = True
+            self._connected = True
             print(f"Scale connected: {scale_name} on {port_name}")
             return True
         except serial.SerialException as e:
             print(f"Connection error: {e}")
             return False
 
-    def request_weight(self):
+    def disconnect(self) -> None:
+        """Close the serial connection."""
+        if self.serial_port:
+            try:
+                self.serial_port.close()
+            except Exception:
+                pass
+        self._connected = False
+        self.serial_port = None
+        self.port_name = None
+        self.last_successful_read = 0.0  # Reset timestamp
+
+    def request_weight(self) -> None:
         """Send weight request command (ESC+P)."""
-        if self.connected and self.serial_port:
+        if self._connected and self.serial_port:
             try:
                 self.serial_port.write(b'\x1bP\r\n')
             except serial.SerialException:
-                self.connected = False
+                self._connected = False
 
-    def tare(self):
+    def tare(self) -> None:
         """Send tare command (ESC+T)."""
-        if self.connected and self.serial_port:
+        if self._connected and self.serial_port:
             try:
                 self.serial_port.write(b'\x1bT\r\n')
             except serial.SerialException:
                 pass
 
-    def zero(self):
-        """Send zero command (multiple attempts)."""
-        if self.connected and self.serial_port:
+    def zero(self) -> None:
+        """Send zero command (tries multiple commands)."""
+        if self._connected and self.serial_port:
             try:
                 self.serial_port.write(b'\x1bZ\r\n')  # ESC+Z
                 time.sleep(0.1)
@@ -116,14 +131,14 @@ class SartoriusScale:
             except serial.SerialException:
                 pass
 
-    def read_data(self):
+    def read_data(self) -> Optional[Dict[str, Any]]:
         """
         Read and parse weight data from scale.
 
         Returns:
-            dict: Parsed weight data or None
+            dict: Parsed weight data or None if no data available
         """
-        if not self.connected or not self.serial_port:
+        if not self._connected or not self.serial_port:
             return None
 
         try:
@@ -137,49 +152,13 @@ class SartoriusScale:
                         line, self.buffer = self.buffer.split(b'\r\n', 1)
                         text = line.decode('ascii', errors='replace').strip()
                         if text:
+                            self.update_last_read()  # Track successful read
                             return self._parse_weight(text)
         except serial.SerialException:
-            self.connected = False
+            self._connected = False
 
         return None
 
-    def _parse_weight(self, text):
-        """
-        Parse weight string from scale response.
 
-        Args:
-            text: Raw text from scale
-
-        Returns:
-            dict: Parsed weight data
-        """
-        parts = text.split()
-        weight = None
-        unit = 'g'
-
-        for i, p in enumerate(parts):
-            try:
-                weight = float(p.replace('+', '').replace(' ', ''))
-                if i + 1 < len(parts):
-                    unit = parts[i + 1]
-                break
-            except ValueError:
-                continue
-
-        return {
-            'raw': text,
-            'weight': weight,
-            'unit': unit,
-            'timestamp': time.time()
-        }
-
-    def disconnect(self):
-        """Close the serial connection."""
-        if self.serial_port:
-            try:
-                self.serial_port.close()
-            except Exception:
-                pass
-        self.connected = False
-        self.serial_port = None
-        self.port_name = None
+# Convenience alias for backward compatibility
+SartoriusScale = SartoriusScaleWindows

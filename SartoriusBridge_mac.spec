@@ -33,6 +33,9 @@ a = Analysis(
     binaries=binaries,
     datas=[
         ('sartorius_web_server.py', '.'),
+        ('sartorius_core.py', '.'),
+        ('sartorius_scale_base.py', '.'),
+        ('sartorius_scale_macos.py', '.'),
         ('menubar_green.png', '.'),
         ('menubar_yellow.png', '.'),
         ('menubar_gray.png', '.'),
@@ -47,10 +50,14 @@ a = Analysis(
         'websockets.server',
         'websockets.asyncio',
         'websockets.asyncio.server',
+        'websockets.exceptions',
         'rumps',
         'asyncio',
         'json',
         'threading',
+        'sartorius_core',
+        'sartorius_scale_base',
+        'sartorius_scale_macos',
     ],
     hookspath=[],
     hooksconfig={},
@@ -96,7 +103,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='SartoriusBridge.app',
-    icon='icon.icns',
+    icon='assets/SartoriusBridge.icns',
     bundle_identifier='com.focalfinishes.sartoriusbridge',
     info_plist={
         'CFBundleName': 'SartoriusBridge',
