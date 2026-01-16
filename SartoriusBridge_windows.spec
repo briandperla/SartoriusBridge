@@ -13,6 +13,8 @@ a = Analysis(
     datas=[
         ('sartorius_web_server_windows.py', '.'),
         ('sartorius_scale_windows.py', '.'),
+        ('sartorius_core.py', '.'),
+        ('sartorius_scale_base.py', '.'),
     ],
     hiddenimports=[
         'serial',
@@ -24,6 +26,7 @@ a = Analysis(
         'websockets.server',
         'websockets.asyncio',
         'websockets.asyncio.server',
+        'websockets.exceptions',
         'pystray',
         'pystray._win32',
         'PIL',
@@ -32,6 +35,8 @@ a = Analysis(
         'asyncio',
         'json',
         'threading',
+        'sartorius_core',
+        'sartorius_scale_base',
     ],
     hookspath=[],
     hooksconfig={},
