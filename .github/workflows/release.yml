@@ -38,12 +38,14 @@ jobs:
           (Get-Content installer/SartoriusBridge.iss) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`"" | Set-Content installer/SartoriusBridge.iss
           # Build installer
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/SartoriusBridge.iss
+          # Rename to standard convention
+          Move-Item "dist/SartoriusBridge-Setup-$version.exe" "dist/SartoriusBridge-$version-windows.exe"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.version }}
-          files: dist/SartoriusBridge-Setup-*.exe
+          files: dist/SartoriusBridge-*-windows.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -71,6 +73,10 @@ jobs:
 
       - name: Create DMG
         run: |
+          # Get version without 'v' prefix
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${VERSION#v}"
+
           # Create a temporary directory for DMG contents
           mkdir -p dmg_contents
           cp -r dist/SartoriusBridge.app dmg_contents/
@@ -86,13 +92,13 @@ jobs:
           SCRIPT
           chmod +x dmg_contents/Install.command
 
-          # Create DMG
-          hdiutil create -volname "SartoriusBridge" -srcfolder dmg_contents -ov -format UDZO dist/SartoriusBridge.dmg
+          # Create DMG with versioned name
+          hdiutil create -volname "SartoriusBridge" -srcfolder dmg_contents -ov -format UDZO "dist/SartoriusBridge-${VERSION}-macos.dmg"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.version }}
-          files: dist/SartoriusBridge.dmg
+          files: dist/SartoriusBridge-*-macos.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
