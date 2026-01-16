@@ -20,9 +20,17 @@ import sartorius_core
 scale = SartoriusScaleWindows()
 sartorius_core.scale = scale
 
+# Re-export clients from core for tray app
+clients = sartorius_core.clients
+
+
+async def main():
+    """Main entry point for the Windows server."""
+    await sartorius_core.run_server("Sartorius Bridge - Windows")
+
 
 if __name__ == "__main__":
     try:
-        asyncio.run(sartorius_core.run_server("Sartorius Bridge - Windows"))
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("\n\nServer stopped.")

@@ -31,11 +31,21 @@ jobs:
         run: |
           python -m PyInstaller --clean -y SartoriusBridge_windows.spec
 
+      - name: Build installer with Inno Setup
+        run: |
+          # Update version in .iss file
+          $version = "${{ github.event.inputs.version }}".TrimStart('v')
+          (Get-Content installer/SartoriusBridge.iss) -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`"" | Set-Content installer/SartoriusBridge.iss
+          # Build installer
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/SartoriusBridge.iss
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.version }}
-          files: dist/SartoriusBridge.exe
+          files: |
+            dist/SartoriusBridge.exe
+            dist/SartoriusBridge-Setup-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
