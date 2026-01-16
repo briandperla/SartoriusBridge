@@ -165,7 +165,8 @@ class SartoriusScaleMacOS(SartoriusScaleBase):
             try:
                 self.dev.write(self.ep_out.bEndpointAddress, b'\x1bP\r\n', timeout=1000)
             except usb.core.USBError:
-                pass
+                # USB error means device is gone (sleep/wake, unplugged)
+                self._connected = False
 
     def tare(self) -> None:
         """Send tare command (ESC+T)."""
@@ -173,7 +174,7 @@ class SartoriusScaleMacOS(SartoriusScaleBase):
             try:
                 self.dev.write(self.ep_out.bEndpointAddress, b'\x1bT\r\n', timeout=1000)
             except usb.core.USBError:
-                pass
+                self._connected = False
 
     def zero(self) -> None:
         """Send zero command (tries multiple commands)."""
@@ -187,7 +188,7 @@ class SartoriusScaleMacOS(SartoriusScaleBase):
                 # Some scales use tare when empty as zero
                 self.dev.write(self.ep_out.bEndpointAddress, b'\x1bT\r\n', timeout=1000)  # ESC+T (tare)
             except usb.core.USBError:
-                pass
+                self._connected = False
 
     def read_data(self) -> Optional[Dict[str, Any]]:
         """
@@ -213,9 +214,14 @@ class SartoriusScaleMacOS(SartoriusScaleBase):
                     if text:
                         self.update_last_read()  # Track successful read
                         return self._parse_weight(text)
-        except usb.core.USBError:
-            pass
+        except usb.core.USBError as e:
+            # USB error means device is gone (sleep/wake, unplugged)
+            # Timeout errors (errno 60) are normal when no data available
+            if e.errno != 60:  # Not a timeout
+                print(f"USB error - marking disconnected: {e}")
+                self._connected = False
         except Exception as e:
+            print(f"Unexpected error - marking disconnected: {e}")
             self._connected = False
 
         return None
