@@ -149,7 +149,8 @@ class SartoriusBridgeApp(rumps.App):
 
     @rumps.clicked("Open Formulator")
     def open_formulator(self, _):
-        subprocess.run(["open", "https://formulator.focalfinishes.com"])
+        # Open in Chrome specifically (Safari has USB/WebSocket issues)
+        subprocess.run(["open", "-a", "Google Chrome", "https://formulator.focalfinishes.com"])
 
     def cleanup(self):
         """Clean shutdown of server."""

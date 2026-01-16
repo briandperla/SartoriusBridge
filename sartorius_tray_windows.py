@@ -109,8 +109,9 @@ class SartoriusBridgeWindows:
         webbrowser.open('http://localhost:8080')
 
     def open_formulator(self, icon=None, item=None):
-        import webbrowser
-        webbrowser.open('https://formulator.focalfinishes.com')
+        # Open in Chrome specifically (better WebSocket support)
+        import subprocess
+        subprocess.run(['start', 'chrome', 'https://formulator.focalfinishes.com'], shell=True)
 
     def quit_app(self, icon=None, item=None):
         self.stop_server()
