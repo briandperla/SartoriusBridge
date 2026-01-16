@@ -108,8 +108,8 @@ app = BUNDLE(
     info_plist={
         'CFBundleName': 'SartoriusBridge',
         'CFBundleDisplayName': 'Sartorius Bridge',
-        'CFBundleVersion': '1.3.1',
-        'CFBundleShortVersionString': '1.3.1',
+        'CFBundleVersion': '1.3.2',
+        'CFBundleShortVersionString': '1.3.2',
         'LSUIElement': True,  # Hide from dock (menu bar app)
         'NSHighResolutionCapable': True,
     },
