@@ -34,6 +34,30 @@ scale = None  # Platform-specific scale instance
 scale_connected = False
 current_weight = None
 clients = set()
+_shutdown_flag = False  # Signal to stop the server gracefully
+_http_server = None  # Reference to HTTP server for shutdown
+
+
+def request_shutdown():
+    """Signal the server to shut down gracefully."""
+    global _shutdown_flag
+    _shutdown_flag = True
+    # Disconnect scale
+    if scale:
+        scale.disconnect()
+    # Close all WebSocket clients
+    clients.clear()
+    # Shutdown HTTP server
+    if _http_server:
+        _http_server.shutdown()
+
+
+def reset_shutdown():
+    """Reset shutdown flag for restart."""
+    global _shutdown_flag, scale_connected, current_weight
+    _shutdown_flag = False
+    scale_connected = False
+    current_weight = None
 
 
 async def broadcast(message):
@@ -90,7 +114,7 @@ async def scale_reader():
     REQUEST_INTERVAL = 0.3  # Request weight every 300ms for real-time updates
     HEARTBEAT_TIMEOUT = 2.0  # Seconds without data = disconnected
 
-    while True:
+    while not _shutdown_flag:
         # Check heartbeat timeout (no data for 2 seconds = disconnected)
         if scale and scale.connected:
             if scale.seconds_since_last_read() > HEARTBEAT_TIMEOUT:
@@ -132,6 +156,11 @@ async def scale_reader():
             })
 
         await asyncio.sleep(0.02)
+
+    # Cleanup on exit
+    print("Scale reader shutting down...")
+    if scale:
+        scale.disconnect()
 
 
 # HTML page for the web interface
@@ -422,13 +451,26 @@ class SimpleHTTPHandler(http.server.SimpleHTTPRequestHandler):
         pass  # Suppress HTTP logs
 
 
+class ReusableTCPServer(socketserver.TCPServer):
+    """TCP Server that allows address reuse for quick restart."""
+    allow_reuse_address = True
+
+
 def run_http_server():
-    with socketserver.TCPServer(("", HTTP_PORT), SimpleHTTPHandler) as httpd:
-        httpd.serve_forever()
+    global _http_server
+    _http_server = ReusableTCPServer(("", HTTP_PORT), SimpleHTTPHandler)
+    try:
+        _http_server.serve_forever()
+    finally:
+        _http_server.server_close()
+        _http_server = None
 
 
 async def run_server(app_name="Sartorius Bridge"):
     """Main server entry point."""
+    # Reset shutdown state for fresh start
+    reset_shutdown()
+
     print("=" * 55)
     print(f"{app_name} - Web Server")
     print("=" * 55)
@@ -446,13 +488,16 @@ async def run_server(app_name="Sartorius Bridge"):
     http_thread.start()
     print(f"HTTP server started on port {HTTP_PORT}")
 
-    # Start WebSocket server
-    async with serve(handle_client, "localhost", WEBSOCKET_PORT):
-        print(f"WebSocket server started on port {WEBSOCKET_PORT}")
-        print()
+    # Start WebSocket server with reuse_address for quick restart
+    try:
+        async with serve(handle_client, "localhost", WEBSOCKET_PORT, reuse_address=True):
+            print(f"WebSocket server started on port {WEBSOCKET_PORT}")
+            print()
 
-        # Run scale reader
-        await scale_reader()
+            # Run scale reader
+            await scale_reader()
+    finally:
+        print("Server shutdown complete")
 
 
 if __name__ == "__main__":

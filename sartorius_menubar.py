@@ -18,6 +18,7 @@ import threading
 
 # Import server entry point and shared state
 from sartorius_web_server import main as run_server, scale, clients
+import sartorius_core
 
 
 class SartoriusBridgeApp(rumps.App):
@@ -122,10 +123,21 @@ class SartoriusBridgeApp(rumps.App):
             )
             return
 
+        # Signal graceful shutdown (disconnects scale, stops loops)
+        sartorius_core.request_shutdown()
+
         self.server_running = False
         if self.loop:
             # Thread-safe way to stop the event loop
             self.loop.call_soon_threadsafe(self.loop.stop)
+
+        # Wait for server thread to finish (with timeout)
+        if self.server_thread and self.server_thread.is_alive():
+            self.server_thread.join(timeout=2.0)
+
+        # Clear references
+        self.loop = None
+        self.server_thread = None
 
         self.update_status()
 
@@ -141,9 +153,13 @@ class SartoriusBridgeApp(rumps.App):
 
     def cleanup(self):
         """Clean shutdown of server."""
-        if self.server_running and self.loop:
+        if self.server_running:
+            sartorius_core.request_shutdown()
             self.server_running = False
-            self.loop.call_soon_threadsafe(self.loop.stop)
+            if self.loop:
+                self.loop.call_soon_threadsafe(self.loop.stop)
+            if self.server_thread and self.server_thread.is_alive():
+                self.server_thread.join(timeout=2.0)
 
 
 def main():
