@@ -109,12 +109,12 @@ Right-click (Windows) or click (macOS) the icon for these options:
 
 ## Supported Scales
 
-| Model | Connection |
-|-------|------------|
-| Sartorius PMA Evolution | USB (native) |
-| Sartorius PMA Power | USB (FTDI) |
+| Model | USB VID | USB PID | Connection Type |
+|-------|---------|---------|-----------------|
+| Sartorius PMA Evolution | `0x24BC` | `0x2010` | Native USB |
+| Sartorius PMA Power | `0x0403` | `0x6001` | FTDI FT232 |
 
-**Scale Settings:** 9600 baud, 8N1, no handshake
+**Serial Settings:** 9600 baud, 8N1, no handshake, DTR/RTS high
 
 ---
 
